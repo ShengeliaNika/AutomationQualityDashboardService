@@ -1,0 +1,24 @@
+package com.dashboard.repository;
+
+import com.dashboard.entity.TestRun;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface TestRunRepository extends JpaRepository<TestRun, Long> {
+
+    Optional<TestRun> findByRunId(String runId);
+
+    boolean existsByRunId(String runId);
+
+    @Query("SELECT r FROM TestRun r WHERE (:branch IS NULL OR r.branch = :branch) " +
+           "AND (:environment IS NULL OR r.environment = :environment) " +
+           "ORDER BY r.startedAt DESC")
+    List<TestRun> findByFilters(@Param("branch") String branch,
+                                @Param("environment") String environment);
+}

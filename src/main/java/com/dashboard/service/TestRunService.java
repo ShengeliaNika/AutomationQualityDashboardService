@@ -1,0 +1,191 @@
+package com.dashboard.service;
+
+import com.dashboard.dto.request.TestRunRequest;
+import com.dashboard.dto.response.*;
+import com.dashboard.entity.TestResult;
+import com.dashboard.entity.TestRun;
+import com.dashboard.enums.TestStatus;
+import com.dashboard.exception.ResourceNotFoundException;
+import com.dashboard.repository.TestResultRepository;
+import com.dashboard.repository.TestRunRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.*;
+import java.util.stream.Collectors;
+
+@Service
+@Transactional
+@RequiredArgsConstructor
+public class TestRunService {
+
+    private final TestRunRepository testRunRepository;
+    private final TestResultRepository testResultRepository;
+    private final NotificationService notificationService;
+
+    public TestRun saveRun(TestRunRequest request) {
+        if (testRunRepository.existsByRunId(request.getRunId())) {
+            throw new IllegalArgumentException("Run with ID '" + request.getRunId() + "' already exists");
+        }
+
+        TestRun run = TestRun.builder()
+                .runId(request.getRunId())
+                .branch(request.getBranch())
+                .environment(request.getEnvironment())
+                .commitHash(request.getCommitHash())
+                .startedAt(request.getStartedAt())
+                .build();
+
+        List<TestResult> results = request.getTests().stream()
+                .map(t -> TestResult.builder()
+                        .testId(t.getTestId())
+                        .testName(t.getTestName())
+                        .suite(t.getSuite())
+                        .status(t.getStatus())
+                        .durationMs(t.getDurationMs())
+                        .errorMessage(t.getErrorMessage())
+                        .testRun(run)
+                        .build())
+                .collect(Collectors.toList());
+
+        run.setTests(results);
+        TestRun saved = testRunRepository.save(run);
+
+        if (request.getCallbackUrl() != null && !request.getCallbackUrl().isBlank()) {
+            notificationService.notifyRunCompleted(saved, request.getCallbackUrl());
+        }
+
+        return saved;
+    }
+
+    @Transactional(readOnly = true)
+    public RunSummaryResponse getRunSummary(String runId) {
+        TestRun run = testRunRepository.findByRunId(runId)
+                .orElseThrow(() -> new ResourceNotFoundException("Run not found: " + runId));
+        return buildSummary(run);
+    }
+
+    @Transactional(readOnly = true)
+    public DashboardResponse getDashboard(String branch, String environment, int lastN) {
+        List<TestRun> runs = testRunRepository.findByFilters(branch, environment)
+                .stream().limit(lastN).collect(Collectors.toList());
+
+        List<TrendPoint> passRateTrend = runs.stream()
+                .map(r -> {
+                    long total = r.getTests().size();
+                    long passed = countByStatus(r.getTests(), TestStatus.PASSED);
+                    double rate = total > 0 ? (double) passed / total * 100 : 0;
+                    return new TrendPoint(r.getRunId(), round2(rate));
+                }).collect(Collectors.toList());
+
+        List<TrendPoint> failureTrend = runs.stream()
+                .map(r -> new TrendPoint(r.getRunId(),
+                        (double) countByStatus(r.getTests(), TestStatus.FAILED)))
+                .collect(Collectors.toList());
+
+        List<TrendPoint> durationTrend = runs.stream()
+                .map(r -> new TrendPoint(r.getRunId(),
+                        r.getTests().stream().mapToLong(TestResult::getDurationMs).average().orElse(0)))
+                .collect(Collectors.toList());
+
+        return DashboardResponse.builder()
+                .branch(branch)
+                .environment(environment)
+                .totalRuns(runs.size())
+                .passRateTrend(passRateTrend)
+                .failureCountTrend(failureTrend)
+                .avgDurationTrend(durationTrend)
+                .build();
+    }
+
+    @Transactional(readOnly = true)
+    public List<FlakyTestDto> getFlakyTests() {
+        List<TestResult> all = testResultRepository.findAllWithRunOrderByStartedAt();
+
+        Map<String, List<TestResult>> byTestId = all.stream()
+                .collect(Collectors.groupingBy(TestResult::getTestId));
+
+        return byTestId.entrySet().stream()
+                .filter(entry -> {
+                    List<TestResult> last5 = entry.getValue().stream()
+                            .sorted(Comparator.comparing(
+                                    tr -> tr.getTestRun().getStartedAt(), Comparator.reverseOrder()))
+                            .limit(5)
+                            .collect(Collectors.toList());
+                    boolean hasPassed = last5.stream().anyMatch(r -> r.getStatus() == TestStatus.PASSED);
+                    boolean hasFailed = last5.stream().anyMatch(r -> r.getStatus() == TestStatus.FAILED);
+                    return hasPassed && hasFailed;
+                })
+                .map(entry -> {
+                    List<TestResult> results = entry.getValue();
+                    TestResult sample = results.get(0);
+                    int passCount = (int) results.stream().filter(r -> r.getStatus() == TestStatus.PASSED).count();
+                    int failCount = (int) results.stream().filter(r -> r.getStatus() == TestStatus.FAILED).count();
+                    return new FlakyTestDto(entry.getKey(), sample.getTestName(), sample.getSuite(),
+                            passCount, failCount);
+                })
+                .collect(Collectors.toList());
+    }
+
+    @Transactional(readOnly = true)
+    public List<SlowestTestDto> getSlowestTests(int limit) {
+        return testResultRepository.findAll().stream()
+                .sorted(Comparator.comparingLong(TestResult::getDurationMs).reversed())
+                .limit(limit)
+                .map(t -> new SlowestTestDto(t.getTestId(), t.getTestName(), t.getSuite(), t.getDurationMs()))
+                .collect(Collectors.toList());
+    }
+
+    private RunSummaryResponse buildSummary(TestRun run) {
+        List<TestResult> tests = run.getTests();
+        int total = tests.size();
+        int passed = (int) countByStatus(tests, TestStatus.PASSED);
+        int failed = (int) countByStatus(tests, TestStatus.FAILED);
+        int skipped = (int) countByStatus(tests, TestStatus.SKIPPED);
+        double passRate = total > 0 ? round2((double) passed / total * 100) : 0;
+        long avgDuration = (long) tests.stream().mapToLong(TestResult::getDurationMs).average().orElse(0);
+
+        List<SlowestTestDto> slowest = tests.stream()
+                .sorted(Comparator.comparingLong(TestResult::getDurationMs).reversed())
+                .limit(5)
+                .map(t -> new SlowestTestDto(t.getTestId(), t.getTestName(), t.getSuite(), t.getDurationMs()))
+                .collect(Collectors.toList());
+
+        List<FailedTestDetail> failedTests = tests.stream()
+                .filter(t -> t.getStatus() == TestStatus.FAILED)
+                .map(t -> new FailedTestDetail(t.getTestId(), t.getTestName(), t.getSuite(),
+                        t.getErrorMessage(), t.getDurationMs()))
+                .collect(Collectors.toList());
+
+        Map<String, List<String>> failedBySuite = tests.stream()
+                .filter(t -> t.getStatus() == TestStatus.FAILED)
+                .collect(Collectors.groupingBy(
+                        TestResult::getSuite,
+                        Collectors.mapping(TestResult::getTestName, Collectors.toList())));
+
+        return RunSummaryResponse.builder()
+                .runId(run.getRunId())
+                .branch(run.getBranch())
+                .environment(run.getEnvironment())
+                .startedAt(run.getStartedAt())
+                .total(total)
+                .passed(passed)
+                .failed(failed)
+                .skipped(skipped)
+                .passRate(passRate)
+                .avgDurationMs(avgDuration)
+                .slowestTests(slowest)
+                .failedTests(failedTests)
+                .failedBySuite(failedBySuite)
+                .build();
+    }
+
+    private long countByStatus(List<TestResult> tests, TestStatus status) {
+        return tests.stream().filter(t -> t.getStatus() == status).count();
+    }
+
+    private double round2(double value) {
+        return Math.round(value * 100.0) / 100.0;
+    }
+}
