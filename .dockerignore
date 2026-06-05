@@ -1,0 +1,44 @@
+# Build output
+target/
+*.class
+
+# IDE files
+.idea/
+.vscode/
+*.iml
+*.iws
+*.ipr
+.classpath
+.project
+.settings/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.*
+*.local
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Documentation
+*.md
+docs/
+
+# Maven wrapper (optional, uncomment if not needed)
+# .mvn/
+# mvnw
+# mvnw.cmd

@@ -1,6 +1,7 @@
 package com.dashboard.repository;
 
 import com.dashboard.entity.TestRun;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -20,5 +21,6 @@ public interface TestRunRepository extends JpaRepository<TestRun, Long> {
            "AND (:environment IS NULL OR r.environment = :environment) " +
            "ORDER BY r.startedAt DESC")
     List<TestRun> findByFilters(@Param("branch") String branch,
-                                @Param("environment") String environment);
+                                @Param("environment") String environment,
+                                Pageable pageable);
 }

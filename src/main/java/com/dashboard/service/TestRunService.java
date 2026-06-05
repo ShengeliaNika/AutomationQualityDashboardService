@@ -9,6 +9,8 @@ import com.dashboard.exception.ResourceNotFoundException;
 import com.dashboard.repository.TestResultRepository;
 import com.dashboard.repository.TestRunRepository;
 import lombok.RequiredArgsConstructor;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,14 +18,17 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
-@Transactional
 @RequiredArgsConstructor
 public class TestRunService {
+
+    private static final int TOP_SLOWEST_TESTS_LIMIT = 5;
+    private static final int FLAKY_TEST_WINDOW = 5;
 
     private final TestRunRepository testRunRepository;
     private final TestResultRepository testResultRepository;
     private final NotificationService notificationService;
 
+    @Transactional
     public TestRun saveRun(TestRunRequest request) {
         if (testRunRepository.existsByRunId(request.getRunId())) {
             throw new IllegalArgumentException("Run with ID '" + request.getRunId() + "' already exists");
@@ -68,8 +73,8 @@ public class TestRunService {
 
     @Transactional(readOnly = true)
     public DashboardResponse getDashboard(String branch, String environment, int lastN) {
-        List<TestRun> runs = testRunRepository.findByFilters(branch, environment)
-                .stream().limit(lastN).collect(Collectors.toList());
+        Pageable pageable = PageRequest.of(0, lastN);
+        List<TestRun> runs = testRunRepository.findByFilters(branch, environment, pageable);
 
         List<TrendPoint> passRateTrend = runs.stream()
                 .map(r -> {
@@ -101,38 +106,20 @@ public class TestRunService {
 
     @Transactional(readOnly = true)
     public List<FlakyTestDto> getFlakyTests() {
-        List<TestResult> all = testResultRepository.findAllWithRunOrderByStartedAt();
-
-        Map<String, List<TestResult>> byTestId = all.stream()
-                .collect(Collectors.groupingBy(TestResult::getTestId));
-
-        return byTestId.entrySet().stream()
-                .filter(entry -> {
-                    List<TestResult> last5 = entry.getValue().stream()
-                            .sorted(Comparator.comparing(
-                                    tr -> tr.getTestRun().getStartedAt(), Comparator.reverseOrder()))
-                            .limit(5)
-                            .collect(Collectors.toList());
-                    boolean hasPassed = last5.stream().anyMatch(r -> r.getStatus() == TestStatus.PASSED);
-                    boolean hasFailed = last5.stream().anyMatch(r -> r.getStatus() == TestStatus.FAILED);
-                    return hasPassed && hasFailed;
-                })
-                .map(entry -> {
-                    List<TestResult> results = entry.getValue();
-                    TestResult sample = results.get(0);
-                    int passCount = (int) results.stream().filter(r -> r.getStatus() == TestStatus.PASSED).count();
-                    int failCount = (int) results.stream().filter(r -> r.getStatus() == TestStatus.FAILED).count();
-                    return new FlakyTestDto(entry.getKey(), sample.getTestName(), sample.getSuite(),
-                            passCount, failCount);
-                })
+        return testResultRepository.findFlakyTests(FLAKY_TEST_WINDOW).stream()
+                .map(projection -> new FlakyTestDto(
+                        projection.getTestId(),
+                        projection.getTestName(),
+                        projection.getSuite(),
+                        projection.getPassCount().intValue(),
+                        projection.getFailCount().intValue()))
                 .collect(Collectors.toList());
     }
 
     @Transactional(readOnly = true)
     public List<SlowestTestDto> getSlowestTests(int limit) {
-        return testResultRepository.findAll().stream()
-                .sorted(Comparator.comparingLong(TestResult::getDurationMs).reversed())
-                .limit(limit)
+        Pageable pageable = PageRequest.of(0, limit);
+        return testResultRepository.findSlowestTests(pageable).stream()
                 .map(t -> new SlowestTestDto(t.getTestId(), t.getTestName(), t.getSuite(), t.getDurationMs()))
                 .collect(Collectors.toList());
     }
@@ -146,20 +133,20 @@ public class TestRunService {
         double passRate = total > 0 ? round2((double) passed / total * 100) : 0;
         long avgDuration = (long) tests.stream().mapToLong(TestResult::getDurationMs).average().orElse(0);
 
-        List<SlowestTestDto> slowest = tests.stream()
-                .sorted(Comparator.comparingLong(TestResult::getDurationMs).reversed())
-                .limit(5)
+        // Fetch slowest tests from repository with database-level sorting
+        Pageable topN = PageRequest.of(0, TOP_SLOWEST_TESTS_LIMIT);
+        List<SlowestTestDto> slowest = testResultRepository.findSlowestTestsByRun(run, topN).stream()
                 .map(t -> new SlowestTestDto(t.getTestId(), t.getTestName(), t.getSuite(), t.getDurationMs()))
                 .collect(Collectors.toList());
 
-        List<FailedTestDetail> failedTests = tests.stream()
-                .filter(t -> t.getStatus() == TestStatus.FAILED)
+        // Fetch only failed tests from repository with database-level filtering
+        List<TestResult> failedTestResults = testResultRepository.findByTestRunAndStatus(run, TestStatus.FAILED);
+        List<FailedTestDetail> failedTests = failedTestResults.stream()
                 .map(t -> new FailedTestDetail(t.getTestId(), t.getTestName(), t.getSuite(),
                         t.getErrorMessage(), t.getDurationMs()))
                 .collect(Collectors.toList());
 
-        Map<String, List<String>> failedBySuite = tests.stream()
-                .filter(t -> t.getStatus() == TestStatus.FAILED)
+        Map<String, List<String>> failedBySuite = failedTestResults.stream()
                 .collect(Collectors.groupingBy(
                         TestResult::getSuite,
                         Collectors.mapping(TestResult::getTestName, Collectors.toList())));
