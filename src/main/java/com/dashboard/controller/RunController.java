@@ -6,10 +6,13 @@ import com.dashboard.dto.response.RunSummaryResponse;
 import com.dashboard.service.HtmlReportService;
 import com.dashboard.service.TestRunService;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
+import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,10 +20,17 @@ import java.util.Map;
 
 @RestController
 @RequiredArgsConstructor
+@Validated
 public class RunController {
 
     private final TestRunService testRunService;
     private final HtmlReportService htmlReportService;
+
+    @GetMapping("/runs")
+    public List<Map<String, Object>> listRuns(
+            @RequestParam(defaultValue = "20") @Min(1) @Max(100) int limit) {
+        return testRunService.listRecentRuns(limit);
+    }
 
     @PostMapping("/runs")
     public ResponseEntity<Map<String, String>> saveRun(@Valid @RequestBody TestRunRequest request) {
@@ -40,5 +50,17 @@ public class RunController {
         List<FlakyTestDto> flaky = testRunService.getFlakyTests();
         String html = htmlReportService.generateReport(summary, flaky);
         return ResponseEntity.ok().contentType(MediaType.TEXT_HTML).body(html);
+    }
+
+    @DeleteMapping("/runs/{runId}")
+    public ResponseEntity<Void> deleteRun(@PathVariable String runId) {
+        testRunService.deleteRun(runId);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PostMapping("/runs/batch-delete")
+    public ResponseEntity<Map<String, Object>> batchDeleteRuns(@RequestBody List<String> runIds) {
+        int deleted = testRunService.bulkDeleteRuns(runIds);
+        return ResponseEntity.ok(Map.of("deleted", deleted));
     }
 }

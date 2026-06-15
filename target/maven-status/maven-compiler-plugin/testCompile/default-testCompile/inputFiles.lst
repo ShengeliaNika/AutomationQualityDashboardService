@@ -1,0 +1,6 @@
+/home/user/AutomationQualityDashboardService/src/test/java/com/dashboard/controller/TestControllerTest.java
+/home/user/AutomationQualityDashboardService/src/test/java/com/dashboard/controller/DashboardControllerTest.java
+/home/user/AutomationQualityDashboardService/src/test/java/com/dashboard/controller/RunControllerTest.java
+/home/user/AutomationQualityDashboardService/src/test/java/com/dashboard/integration/WireMockNotificationTest.java
+/home/user/AutomationQualityDashboardService/src/test/java/com/dashboard/service/NotificationServiceTest.java
+/home/user/AutomationQualityDashboardService/src/test/java/com/dashboard/service/TestRunServiceTest.java

@@ -23,4 +23,10 @@ public interface TestRunRepository extends JpaRepository<TestRun, Long> {
     List<TestRun> findByFilters(@Param("branch") String branch,
                                 @Param("environment") String environment,
                                 Pageable pageable);
+
+    @Query("SELECT DISTINCT r.projectName FROM TestRun r WHERE r.projectName IS NOT NULL AND r.projectName <> '' ORDER BY r.projectName")
+    List<String> findDistinctProjectNames();
+
+    @Query("SELECT r FROM TestRun r WHERE r.projectName = :projectName ORDER BY r.startedAt DESC")
+    List<TestRun> findByProjectName(@Param("projectName") String projectName, Pageable pageable);
 }

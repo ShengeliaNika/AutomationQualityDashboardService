@@ -381,17 +381,17 @@ class RunControllerTest {
     // ── Helper Methods ───────────────────────────────────────────────────────
 
     private Map<String, Object> buildValidRunPayload(String runId) {
-        return Map.of(
-                "runId", runId,
-                "branch", "main",
-                "environment", "test",
-                "commitHash", "abc123",
-                "startedAt", LocalDateTime.now().toString(),
-                "tests", List.of(
-                        buildTestPayload("t-1", "Login Test", "Smoke", TestStatus.PASSED, 1200L),
-                        buildTestPayload("t-2", "Logout Test", "Smoke", TestStatus.FAILED, 800L)
-                )
-        );
+        Map<String, Object> payload = new java.util.HashMap<>();
+        payload.put("runId", runId);
+        payload.put("branch", "main");
+        payload.put("environment", "test");
+        payload.put("commitHash", "abc123");
+        payload.put("startedAt", LocalDateTime.now().toString());
+        payload.put("tests", new java.util.ArrayList<>(List.of(
+                buildTestPayload("t-1", "Login Test", "Smoke", TestStatus.PASSED, 1200L),
+                buildTestPayload("t-2", "Logout Test", "Smoke", TestStatus.FAILED, 800L)
+        )));
+        return payload;
     }
 
     private Map<String, Object> buildTestPayload(String testId, String testName, String suite,

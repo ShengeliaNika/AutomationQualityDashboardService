@@ -24,4 +24,6 @@ public class TestResultRequest {
     private Long durationMs;
 
     private String errorMessage;
+
+    private String errorDetails;
 }

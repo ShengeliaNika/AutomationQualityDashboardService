@@ -15,6 +15,12 @@ public class TestRunRequest {
     @NotBlank
     private String runId;
 
+    /** Which project this run belongs to (e.g. "nugioscore-api"). Optional for backward compat. */
+    private String projectName;
+
+    private String targetUrl;
+    private String username;
+
     @NotBlank
     private String branch;
 

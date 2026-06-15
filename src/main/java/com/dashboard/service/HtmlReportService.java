@@ -1,169 +1,716 @@
 package com.dashboard.service;
 
-import com.dashboard.dto.response.FailedTestDetail;
-import com.dashboard.dto.response.FlakyTestDto;
-import com.dashboard.dto.response.RunSummaryResponse;
-import com.dashboard.dto.response.SlowestTestDto;
+import com.dashboard.dto.response.*;
+import com.dashboard.enums.TestStatus;
 import org.springframework.stereotype.Service;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 public class HtmlReportService {
 
-    private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
 
-    public String generateReport(RunSummaryResponse summary, List<FlakyTestDto> flakyTests) {
-        StringBuilder html = new StringBuilder();
+    // ─────────────────────────────────────────────────────────────
+    // MAIN DASHBOARD  –  GET /
+    // ─────────────────────────────────────────────────────────────
+    public String generateMainDashboard(List<ProjectSummaryDto> projects) {
+        long totalRuns    = projects.stream().mapToLong(ProjectSummaryDto::getTotalRuns).sum();
+        long totalTests   = projects.stream().mapToLong(ProjectSummaryDto::getTotalTests).sum();
+        long totalFailed  = projects.stream().mapToLong(ProjectSummaryDto::getTotalFailed).sum();
+        double overallPass = totalTests > 0 ? round2((double)(totalTests - totalFailed) / totalTests * 100) : 0;
 
-        html.append("""
-                <!DOCTYPE html>
-                <html lang="en">
-                <head>
-                  <meta charset="UTF-8">
-                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                  <title>Test Run Report</title>
-                  <style>
-                    *{box-sizing:border-box;margin:0;padding:0}
-                    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f0f2f5;color:#333;padding:24px}
-                    .header{background:#fff;padding:24px;border-radius:8px;margin-bottom:24px;box-shadow:0 1px 3px rgba(0,0,0,.1)}
-                    .header h1{font-size:22px;color:#1a1a2e}
-                    .header .meta{color:#666;margin-top:8px;font-size:13px}
-                    .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:16px;margin-bottom:24px}
-                    .card{background:#fff;padding:20px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.1);text-align:center}
-                    .card-value{font-size:38px;font-weight:700;line-height:1}
-                    .card-label{font-size:12px;color:#666;margin-top:6px;text-transform:uppercase;letter-spacing:.5px}
-                    .card.total .card-value{color:#2196F3}
-                    .card.passed .card-value{color:#4CAF50}
-                    .card.failed .card-value{color:#f44336}
-                    .card.skipped .card-value{color:#FF9800}
-                    .progress-row{background:#fff;padding:16px 24px;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:24px;display:flex;align-items:center;gap:16px}
-                    .progress-label{font-size:18px;font-weight:600;min-width:80px}
-                    .progress-bar{flex:1;background:#e0e0e0;border-radius:4px;height:12px;overflow:hidden}
-                    .progress-fill{height:100%;border-radius:4px;background:#4CAF50}
-                    .progress-sub{font-size:13px;color:#666}
-                    .section{background:#fff;border-radius:8px;box-shadow:0 1px 3px rgba(0,0,0,.1);margin-bottom:24px;overflow:hidden}
-                    .section-title{padding:16px 24px;border-bottom:1px solid #eee;font-size:15px;font-weight:600;color:#333}
-                    table{width:100%;border-collapse:collapse}
-                    th{background:#f8f9fa;padding:10px 20px;text-align:left;font-size:11px;text-transform:uppercase;color:#666;letter-spacing:.5px;border-bottom:1px solid #eee}
-                    td{padding:11px 20px;border-bottom:1px solid #f5f5f5;font-size:13px}
-                    tr:last-child td{border-bottom:none}
-                    .badge{display:inline-block;padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600}
-                    .badge-failed{background:#ffebee;color:#f44336}
-                    .badge-flaky{background:#fff3e0;color:#e65100}
-                    .badge-slow{background:#e3f2fd;color:#1565c0}
-                    .error-text{font-family:monospace;font-size:11px;color:#f44336;background:#ffebee;padding:3px 7px;border-radius:3px;display:inline-block;max-width:400px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-                    .empty{padding:28px;text-align:center;color:#aaa;font-style:italic;font-size:13px}
-                  </style>
-                </head>
-                <body>
-                """);
+        StringBuilder h = new StringBuilder();
+        h.append(htmlHead("QA Dashboard"));
+        h.append("<body>");
 
-        // Header
-        String started = summary.getStartedAt() != null ? summary.getStartedAt().format(FORMATTER) : "N/A";
-        html.append("<div class=\"header\">")
-            .append("<h1>Test Run Report: <strong>").append(escape(summary.getRunId())).append("</strong></h1>")
-            .append("<div class=\"meta\">")
-            .append("Branch: <strong>").append(escape(summary.getBranch())).append("</strong>")
-            .append(" &nbsp;|&nbsp; Environment: <strong>").append(escape(summary.getEnvironment())).append("</strong>")
-            .append(" &nbsp;|&nbsp; Started: <strong>").append(started).append("</strong>")
-            .append("</div></div>");
+        // ── top nav
+        h.append("<nav class=\"topbar\">")
+         .append("<span class=\"topbar-brand\">&#9654; QA Dashboard</span>")
+         .append("<span class=\"topbar-sub\">Automation Quality Reporting</span>")
+         .append("</nav>");
 
-        // Summary cards
-        html.append("<div class=\"cards\">")
-            .append(card("total", summary.getTotal(), "Total Tests"))
-            .append(card("passed", summary.getPassed(), "Passed"))
-            .append(card("failed", summary.getFailed(), "Failed"))
-            .append(card("skipped", summary.getSkipped(), "Skipped"))
-            .append("</div>");
+        h.append("<div class=\"page\">");
 
-        // Pass-rate bar
-        double pct = Math.min(summary.getPassRate(), 100.0);
-        html.append("<div class=\"progress-row\">")
-            .append("<span class=\"progress-label\">").append(summary.getPassRate()).append("%</span>")
-            .append("<div class=\"progress-bar\"><div class=\"progress-fill\" style=\"width:").append(pct).append("%\"></div></div>")
-            .append("<span class=\"progress-sub\">Pass rate &nbsp;·&nbsp; Avg duration: <strong>")
-            .append(summary.getAvgDurationMs()).append(" ms</strong></span>")
-            .append("</div>");
+        // ── overview strip
+        h.append("<div class=\"overview-strip\">")
+         .append(overviewTile(projects.size(), "Projects"))
+         .append(overviewTile((int) totalRuns,   "Total Runs"))
+         .append(overviewTile((int) totalTests,  "Total Tests"))
+         .append(overviewTileRate(overallPass,   "Overall Pass Rate"))
+         .append("</div>");
 
-        // Failed tests
-        html.append("<div class=\"section\"><div class=\"section-title\">Failed Tests (")
-            .append(summary.getFailed()).append(")</div>");
-        if (summary.getFailedTests() == null || summary.getFailedTests().isEmpty()) {
-            html.append("<div class=\"empty\">No failed tests</div>");
+        // ── project cards
+        h.append("<h2 class=\"section-heading\">Projects</h2>");
+        if (projects.isEmpty()) {
+            h.append("<div class=\"empty-state\">No projects yet. Run your first test suite to get started.</div>");
         } else {
-            html.append("<table><thead><tr>")
-                .append("<th>Test ID</th><th>Test Name</th><th>Suite</th><th>Duration</th><th>Error</th>")
-                .append("</tr></thead><tbody>");
-            for (FailedTestDetail t : summary.getFailedTests()) {
-                html.append("<tr>")
-                    .append("<td>").append(escape(t.getTestId())).append("</td>")
-                    .append("<td><span class=\"badge badge-failed\">FAILED</span> ").append(escape(t.getTestName())).append("</td>")
-                    .append("<td>").append(escape(t.getSuite())).append("</td>")
-                    .append("<td>").append(t.getDurationMs()).append(" ms</td>")
-                    .append("<td>")
-                    .append(t.getErrorMessage() != null
-                            ? "<span class=\"error-text\">" + escape(t.getErrorMessage()) + "</span>"
-                            : "<span style=\"color:#aaa\">—</span>")
-                    .append("</td></tr>");
+            h.append("<div class=\"project-grid\">");
+            for (ProjectSummaryDto p : projects) {
+                h.append(projectCard(p));
             }
-            html.append("</tbody></table>");
+            h.append("</div>");
         }
-        html.append("</div>");
 
-        // Slowest tests
-        html.append("<div class=\"section\"><div class=\"section-title\">Slowest Tests (Top 5)</div>");
-        if (summary.getSlowestTests() == null || summary.getSlowestTests().isEmpty()) {
-            html.append("<div class=\"empty\">No data</div>");
-        } else {
-            html.append("<table><thead><tr><th>#</th><th>Test Name</th><th>Suite</th><th>Duration</th></tr></thead><tbody>");
-            int rank = 1;
-            for (SlowestTestDto t : summary.getSlowestTests()) {
-                html.append("<tr>")
-                    .append("<td>").append(rank++).append("</td>")
-                    .append("<td><span class=\"badge badge-slow\">SLOW</span> ").append(escape(t.getTestName())).append("</td>")
-                    .append("<td>").append(escape(t.getSuite())).append("</td>")
-                    .append("<td><strong>").append(t.getDurationMs()).append(" ms</strong></td>")
-                    .append("</tr>");
-            }
-            html.append("</tbody></table>");
-        }
-        html.append("</div>");
-
-        // Flaky tests
-        html.append("<div class=\"section\"><div class=\"section-title\">Flaky Test Candidates (")
-            .append(flakyTests.size()).append(")</div>");
-        if (flakyTests.isEmpty()) {
-            html.append("<div class=\"empty\">No flaky tests detected</div>");
-        } else {
-            html.append("<table><thead><tr><th>Test ID</th><th>Test Name</th><th>Suite</th><th>Passes</th><th>Failures</th></tr></thead><tbody>");
-            for (FlakyTestDto t : flakyTests) {
-                html.append("<tr>")
-                    .append("<td>").append(escape(t.getTestId())).append("</td>")
-                    .append("<td><span class=\"badge badge-flaky\">FLAKY</span> ").append(escape(t.getTestName())).append("</td>")
-                    .append("<td>").append(escape(t.getSuite())).append("</td>")
-                    .append("<td style=\"color:#4CAF50;font-weight:600\">").append(t.getPassCount()).append("</td>")
-                    .append("<td style=\"color:#f44336;font-weight:600\">").append(t.getFailCount()).append("</td>")
-                    .append("</tr>");
-            }
-            html.append("</tbody></table>");
-        }
-        html.append("</div>");
-
-        html.append("</body></html>");
-        return html.toString();
+        h.append("</div></body></html>");
+        return h.toString();
     }
 
-    private String card(String type, int value, String label) {
-        return "<div class=\"card " + type + "\">"
-                + "<div class=\"card-value\">" + value + "</div>"
-                + "<div class=\"card-label\">" + label + "</div>"
-                + "</div>";
+    // ─────────────────────────────────────────────────────────────
+    // PROJECT DETAIL  –  GET /projects/{name}
+    // ─────────────────────────────────────────────────────────────
+    public String generateProjectPage(String projectName, List<Map<String, Object>> runs, List<Map<String, Object>> flakyTests) {
+        long totalRuns   = runs.size();
+        long totalPassed = runs.stream().mapToLong(r -> toLong(r.get("passed"))).sum();
+        long totalFailed = runs.stream().mapToLong(r -> toLong(r.get("failed"))).sum();
+        long totalTests  = runs.stream().mapToLong(r -> toLong(r.get("total"))).sum();
+        double avgPass   = totalTests > 0 ? round2((double) totalPassed / totalTests * 100) : 0;
+
+        StringBuilder h = new StringBuilder();
+        h.append(htmlHead(projectName + " — Runs"));
+        h.append("<body>");
+
+        h.append("<nav class=\"topbar\">")
+         .append("<a class=\"topbar-brand\" href=\"/\">&#9654; QA Dashboard</a>")
+         .append("<span class=\"topbar-sep\">›</span>")
+         .append("<span class=\"topbar-brand\">").append(escape(projectName)).append("</span>")
+         .append("</nav>");
+
+        h.append("<div class=\"page\">");
+
+        // ── stats strip
+        h.append("<div class=\"overview-strip\">")
+         .append(overviewTile((int) totalRuns,   "Runs"))
+         .append(overviewTile((int) totalTests,  "Total Tests"))
+         .append(overviewTile((int) totalFailed, "Total Failed"))
+         .append(overviewTileRate(avgPass,        "Avg Pass Rate"))
+         .append("</div>");
+
+        // ── flaky / frequently failing section
+        if (!flakyTests.isEmpty()) {
+            h.append("<h2 class=\"section-heading\">&#9888; Frequently Failing Tests <span style=\"font-size:13px;font-weight:400;color:#aaa\">(last 10 runs)</span></h2>");
+            h.append("<div class=\"card-table\" style=\"margin-bottom:24px\">");
+            h.append("<table><thead><tr><th>Suite</th><th>Test Name</th><th>Runs</th><th>Passed</th><th>Failed</th><th>Failure Rate</th></tr></thead><tbody>");
+            for (Map<String, Object> ft : flakyTests) {
+                double fr = toDouble(ft.get("failureRate"));
+                String frColor = fr >= 50 ? "#f44336" : "#FF9800";
+                h.append("<tr>")
+                 .append("<td style=\"color:#888;font-size:12px\">").append(escape(str(ft.get("suite")))).append("</td>")
+                 .append("<td><span class=\"badge badge-flaky\">FLAKY</span> ").append(escape(str(ft.get("testName")))).append("</td>")
+                 .append("<td>").append(ft.get("totalRuns")).append("</td>")
+                 .append("<td style=\"color:#4CAF50;font-weight:600\">").append(ft.get("passed")).append("</td>")
+                 .append("<td style=\"color:#f44336;font-weight:600\">").append(ft.get("failed")).append("</td>")
+                 .append("<td>")
+                 .append("<div style=\"display:flex;align-items:center;gap:8px\">")
+                 .append("<div style=\"flex:1;background:#eee;border-radius:4px;height:8px;min-width:80px\">")
+                 .append("<div style=\"width:").append(fr).append("%;height:100%;border-radius:4px;background:").append(frColor).append("\"></div></div>")
+                 .append("<span style=\"font-size:12px;font-weight:700;color:").append(frColor).append("\">").append(fr).append("%</span>")
+                 .append("</div></td>")
+                 .append("</tr>");
+            }
+            h.append("</tbody></table></div>");
+        }
+
+        // ── action bar (hidden until rows selected)
+        h.append("<div id=\"action-bar\" style=\"display:none;align-items:center;gap:10px;background:#1a1a2e;color:#fff;padding:10px 16px;border-radius:8px;margin-bottom:12px\">")
+         .append("<span id=\"sel-count\" style=\"font-size:13px;font-weight:600\"></span>")
+         .append("<button onclick=\"compareSelected()\" id=\"btn-compare\" class=\"act-btn\" style=\"background:#2196F3\">&#9654; Compare Selected</button>")
+         .append("<button onclick=\"deleteSelected()\" class=\"act-btn\" style=\"background:#f44336\">&#128465; Delete Selected</button>")
+         .append("<button onclick=\"clearSelection()\" class=\"act-btn\" style=\"background:#555;margin-left:auto\">Clear</button>")
+         .append("</div>");
+
+        // ── runs table
+        h.append("<h2 class=\"section-heading\">Test Runs</h2>");
+        if (runs.isEmpty()) {
+            h.append("<div class=\"empty-state\">No runs recorded for this project yet.</div>");
+        } else {
+            h.append("<div class=\"card-table\">");
+            h.append("<table><thead><tr>")
+             .append("<th><input type=\"checkbox\" id=\"chk-all\" onchange=\"selectAll(this)\"></th>")
+             .append("<th>Started</th><th>Branch</th><th>Environment</th>")
+             .append("<th>Tests</th><th>Passed</th><th>Failed</th><th>Pass Rate</th><th></th>")
+             .append("</tr></thead><tbody>");
+
+            for (Map<String, Object> r : runs) {
+                long   total    = toLong(r.get("total"));
+                long   passed   = toLong(r.get("passed"));
+                long   failed   = toLong(r.get("failed"));
+                double passRate = toDouble(r.get("passRate"));
+                String started  = r.get("startedAt") != null ? r.get("startedAt").toString().replace("T", " ").substring(0, 16) : "—";
+                String runId    = str(r.get("runId"));
+                String reportUrl = (String) r.get("reportUrl");
+                String rateColor = passRate >= 90 ? "#4CAF50" : passRate >= 70 ? "#FF9800" : "#f44336";
+
+                h.append("<tr>")
+                 .append("<td><input type=\"checkbox\" class=\"run-check\" value=\"").append(escape(runId)).append("\" onchange=\"updateActionBar()\"></td>")
+                 .append("<td class=\"mono\">").append(escape(started)).append("</td>")
+                 .append("<td><span class=\"tag\">").append(escape(str(r.get("branch")))).append("</span></td>")
+                 .append("<td><span class=\"tag tag-env\">").append(escape(str(r.get("environment")))).append("</span></td>")
+                 .append("<td>").append(total).append("</td>")
+                 .append("<td style=\"color:#4CAF50;font-weight:600\">").append(passed).append("</td>")
+                 .append("<td style=\"color:").append(failed > 0 ? "#f44336" : "#aaa").append(";font-weight:600\">").append(failed).append("</td>")
+                 .append("<td>")
+                 .append("<div style=\"display:flex;align-items:center;gap:8px\">")
+                 .append("<div style=\"flex:1;background:#eee;border-radius:4px;height:8px;min-width:60px\">")
+                 .append("<div style=\"width:").append(passRate).append("%;height:100%;border-radius:4px;background:").append(rateColor).append("\"></div></div>")
+                 .append("<span style=\"font-size:12px;font-weight:600;color:").append(rateColor).append("\">").append(passRate).append("%</span>")
+                 .append("</div></td>")
+                 .append("<td><a class=\"btn-report\" href=\"").append(escape(reportUrl)).append("\">View Report</a></td>")
+                 .append("</tr>");
+            }
+            h.append("</tbody></table></div>");
+        }
+
+        // ── inline JS
+        h.append("<style>.act-btn{padding:6px 14px;border:none;border-radius:5px;color:#fff;font-size:13px;font-weight:600;cursor:pointer}.act-btn:hover{opacity:.85}</style>");
+        h.append("<script>");
+        h.append("const PROJECT='").append(escape(projectName)).append("';");
+        h.append("""
+            function updateActionBar(){
+                const checked=document.querySelectorAll('.run-check:checked');
+                const n=checked.length;
+                document.getElementById('action-bar').style.display=n>0?'flex':'none';
+                document.getElementById('sel-count').textContent=n+' run'+(n===1?'':'s')+' selected';
+                document.getElementById('btn-compare').disabled=n<2;
+            }
+            function selectAll(cb){
+                document.querySelectorAll('.run-check').forEach(c=>c.checked=cb.checked);
+                updateActionBar();
+            }
+            function clearSelection(){
+                document.querySelectorAll('.run-check').forEach(c=>c.checked=false);
+                const ca=document.getElementById('chk-all');
+                if(ca)ca.checked=false;
+                updateActionBar();
+            }
+            function deleteSelected(){
+                const ids=[...document.querySelectorAll('.run-check:checked')].map(c=>c.value);
+                if(!confirm('Delete '+ids.length+' run(s)? This cannot be undone.'))return;
+                fetch('/runs/batch-delete',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(ids)})
+                    .then(()=>location.reload());
+            }
+            function compareSelected(){
+                const ids=[...document.querySelectorAll('.run-check:checked')].map(c=>c.value);
+                if(ids.length<2){alert('Select at least 2 runs to compare.');return;}
+                location.href='/projects/'+PROJECT+'/combined?'+ids.map(id=>'runIds='+encodeURIComponent(id)).join('&');
+            }
+        """);
+        h.append("</script>");
+
+        h.append("</div></body></html>");
+        return h.toString();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // RUN DETAIL REPORT  –  GET /runs/{id}/report
+    // ─────────────────────────────────────────────────────────────
+    public String generateReport(RunSummaryResponse summary, List<FlakyTestDto> flakyTests) {
+        StringBuilder h = new StringBuilder();
+        h.append(htmlHead("Run Report — " + summary.getRunId()));
+        h.append("<body>");
+
+        // ── breadcrumb nav
+        h.append("<nav class=\"topbar\">")
+         .append("<a class=\"topbar-brand\" href=\"/\">&#9654; QA Dashboard</a>");
+        if (summary.getProjectName() != null) {
+            h.append("<span class=\"topbar-sep\">›</span>")
+             .append("<a class=\"topbar-brand\" href=\"/projects/").append(escape(summary.getProjectName())).append("\">")
+             .append(escape(summary.getProjectName())).append("</a>");
+        }
+        h.append("<span class=\"topbar-sep\">›</span>")
+         .append("<span class=\"topbar-brand mono\" style=\"font-size:12px\">").append(escape(summary.getRunId())).append("</span>")
+         .append("</nav>");
+
+        h.append("<div class=\"page\">");
+
+        // ── run meta
+        String started = summary.getStartedAt() != null ? summary.getStartedAt().format(FMT) : "N/A";
+        h.append("<div class=\"run-meta\">");
+        h.append("<div><span class=\"meta-label\">Branch</span><span class=\"tag\">").append(escape(summary.getBranch())).append("</span></div>");
+        h.append("<div><span class=\"meta-label\">Environment</span><span class=\"tag tag-env\">").append(escape(summary.getEnvironment())).append("</span></div>");
+        h.append("<div><span class=\"meta-label\">Started</span><span class=\"mono\">").append(started).append("</span></div>");
+        h.append("<div><span class=\"meta-label\">Avg Duration</span><span class=\"mono\">").append(summary.getAvgDurationMs()).append(" ms</span></div>");
+        if (summary.getTargetUrl() != null) {
+            h.append("<div><span class=\"meta-label\">Target URL</span><span class=\"mono\" style=\"color:#1565c0;font-size:11px\">").append(escape(summary.getTargetUrl())).append("</span></div>");
+        }
+        if (summary.getUsername() != null) {
+            h.append("<div><span class=\"meta-label\">User</span><span class=\"tag\" style=\"background:#f3e5f5;color:#6a1b9a\">").append(escape(summary.getUsername())).append("</span></div>");
+            h.append("<div><span class=\"meta-label\">Password</span><span class=\"mono\" style=\"color:#aaa;letter-spacing:2px\">&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;&#9679;</span></div>");
+        }
+        h.append("</div>");
+
+        // ── summary cards
+        h.append("<div class=\"overview-strip\">")
+         .append(overviewTile(summary.getTotal(),   "Total"))
+         .append(overviewTile(summary.getPassed(),  "Passed",  "#4CAF50"))
+         .append(overviewTile(summary.getFailed(),  "Failed",  summary.getFailed() > 0 ? "#f44336" : "#4CAF50"))
+         .append(overviewTile(summary.getSkipped(), "Skipped", "#FF9800"))
+         .append(overviewTileRate(summary.getPassRate(), "Pass Rate"))
+         .append("</div>");
+
+        // ── charts row: donut + suite breakdown
+        h.append("<div style=\"display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:20px\">");
+        h.append(donutChart(summary.getPassed(), summary.getFailed(), summary.getSkipped(), summary.getTotal()));
+        h.append(suiteBreakdown(summary.getAllTests()));
+        h.append("</div>");
+
+        // ── all tests (expandable)
+        h.append(tableSection("All Tests", summary.getTotal(), () -> {
+            if (summary.getAllTests() == null || summary.getAllTests().isEmpty())
+                return "<div class=\"empty-state\" style=\"padding:20px\">No test data</div>";
+            StringBuilder t = new StringBuilder();
+            t.append("<table><thead><tr><th>Suite</th><th>Test Name</th><th>Status</th><th>Duration</th></tr></thead><tbody>");
+            for (TestResultDetail test : summary.getAllTests()) {
+                String statusColor = switch (test.getStatus()) {
+                    case PASSED  -> "#4CAF50";
+                    case FAILED  -> "#f44336";
+                    default      -> "#FF9800";
+                };
+                String statusLabel = test.getStatus().name();
+                boolean hasDetails = (test.getErrorDetails() != null && !test.getErrorDetails().isBlank())
+                                  || (test.getErrorMessage() != null && !test.getErrorMessage().isBlank());
+                t.append("<tr>")
+                 .append("<td style=\"color:#888;font-size:12px\">").append(escape(test.getSuite())).append("</td>")
+                 .append("<td>");
+                if (hasDetails) {
+                    t.append("<details><summary style=\"cursor:pointer;list-style:none;display:flex;align-items:center;gap:6px\">")
+                     .append("<span style=\"font-size:11px;color:#aaa;margin-right:2px\">&#9654;</span>")
+                     .append(escape(test.getTestName()))
+                     .append("</summary>")
+                     .append("<div class=\"test-details\">");
+                    if (test.getErrorDetails() != null && !test.getErrorDetails().isBlank()) {
+                        t.append("<div class=\"steps-list\">");
+                        for (String line : test.getErrorDetails().split("\n")) {
+                            String trimmed = line.trim();
+                            if (trimmed.isEmpty()) continue;
+                            boolean isFail = trimmed.contains("-> FAILED") || trimmed.startsWith("✗");
+                            t.append("<div class=\"step ").append(isFail ? "step-fail" : "step-pass").append("\">")
+                             .append(escape(trimmed)).append("</div>");
+                        }
+                        t.append("</div>");
+                    }
+                    if (test.getErrorMessage() != null && !test.getErrorMessage().isBlank()) {
+                        t.append("<div class=\"error-block\">").append(escape(test.getErrorMessage())).append("</div>");
+                    }
+                    t.append("</div></details>");
+                } else {
+                    t.append(escape(test.getTestName()));
+                }
+                t.append("</td>")
+                 .append("<td><span style=\"font-size:11px;font-weight:700;color:").append(statusColor).append("\">").append(statusLabel).append("</span></td>")
+                 .append("<td class=\"mono\">").append(test.getDurationMs()).append(" ms</td>")
+                 .append("</tr>");
+            }
+            t.append("</tbody></table>");
+            return t.toString();
+        }));
+
+        // ── failed tests
+        h.append(tableSection("Failed Tests", summary.getFailed(), () -> {
+            if (summary.getFailedTests() == null || summary.getFailedTests().isEmpty())
+                return "<div class=\"empty-state\" style=\"padding:20px\">No failures &#10003;</div>";
+            StringBuilder t = new StringBuilder();
+            t.append("<table><thead><tr><th>Suite</th><th>Test Name</th><th>Duration</th><th>Error</th></tr></thead><tbody>");
+            for (FailedTestDetail f : summary.getFailedTests()) {
+                t.append("<tr>")
+                 .append("<td>").append(escape(f.getSuite())).append("</td>")
+                 .append("<td><span class=\"badge badge-failed\">FAIL</span> ").append(escape(f.getTestName())).append("</td>")
+                 .append("<td class=\"mono\">").append(f.getDurationMs()).append(" ms</td>")
+                 .append("<td>").append(f.getErrorMessage() != null
+                         ? "<span class=\"error-text\">" + escape(f.getErrorMessage()) + "</span>"
+                         : "<span style=\"color:#aaa\">—</span>").append("</td>")
+                 .append("</tr>");
+            }
+            t.append("</tbody></table>");
+            return t.toString();
+        }));
+
+        // ── slowest tests
+        h.append(tableSection("Slowest Tests (Top 5)", null, () -> {
+            if (summary.getSlowestTests() == null || summary.getSlowestTests().isEmpty())
+                return "<div class=\"empty-state\" style=\"padding:20px\">No data</div>";
+            StringBuilder t = new StringBuilder();
+            t.append("<table><thead><tr><th>#</th><th>Suite</th><th>Test Name</th><th>Duration</th></tr></thead><tbody>");
+            int rank = 1;
+            for (SlowestTestDto s : summary.getSlowestTests()) {
+                t.append("<tr>")
+                 .append("<td style=\"color:#aaa\">").append(rank++).append("</td>")
+                 .append("<td>").append(escape(s.getSuite())).append("</td>")
+                 .append("<td><span class=\"badge badge-slow\">SLOW</span> ").append(escape(s.getTestName())).append("</td>")
+                 .append("<td class=\"mono\"><strong>").append(s.getDurationMs()).append(" ms</strong></td>")
+                 .append("</tr>");
+            }
+            t.append("</tbody></table>");
+            return t.toString();
+        }));
+
+        // ── flaky tests
+        h.append(tableSection("Flaky Test Candidates", flakyTests.size(), () -> {
+            if (flakyTests.isEmpty())
+                return "<div class=\"empty-state\" style=\"padding:20px\">No flaky tests detected</div>";
+            StringBuilder t = new StringBuilder();
+            t.append("<table><thead><tr><th>Suite</th><th>Test Name</th><th>Passes</th><th>Failures</th></tr></thead><tbody>");
+            for (FlakyTestDto f : flakyTests) {
+                t.append("<tr>")
+                 .append("<td>").append(escape(f.getSuite())).append("</td>")
+                 .append("<td><span class=\"badge badge-flaky\">FLAKY</span> ").append(escape(f.getTestName())).append("</td>")
+                 .append("<td style=\"color:#4CAF50;font-weight:600\">").append(f.getPassCount()).append("</td>")
+                 .append("<td style=\"color:#f44336;font-weight:600\">").append(f.getFailCount()).append("</td>")
+                 .append("</tr>");
+            }
+            t.append("</tbody></table>");
+            return t.toString();
+        }));
+
+        h.append("</div></body></html>");
+        return h.toString();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // COMBINED REPORT  –  GET /projects/{name}/combined
+    // ─────────────────────────────────────────────────────────────
+    @SuppressWarnings("unchecked")
+    public String generateCombinedReport(String projectName, Map<String, Object> report) {
+        int    totalRuns    = (int)    report.get("totalRuns");
+        int    uniqueTests  = (int)    report.get("totalUniqueTests");
+        long   executions   = toLong(  report.get("totalExecutions"));
+        double passRate     = toDouble(report.get("overallPassRate"));
+        List<Map<String, Object>> tests = (List<Map<String, Object>>) report.get("tests");
+
+        long totalFailed = tests.stream().mapToLong(t -> toLong(t.get("failed"))).sum();
+        long totalPassed = tests.stream().mapToLong(t -> toLong(t.get("passed"))).sum();
+
+        StringBuilder h = new StringBuilder();
+        h.append(htmlHead("Combined Report — " + projectName));
+        h.append("<body>");
+
+        h.append("<nav class=\"topbar\">")
+         .append("<a class=\"topbar-brand\" href=\"/\">&#9654; QA Dashboard</a>")
+         .append("<span class=\"topbar-sep\">›</span>")
+         .append("<a class=\"topbar-brand\" href=\"/projects/").append(escape(projectName)).append("\">").append(escape(projectName)).append("</a>")
+         .append("<span class=\"topbar-sep\">›</span>")
+         .append("<span class=\"topbar-brand\">Combined Report (").append(totalRuns).append(" runs)</span>")
+         .append("</nav>");
+
+        h.append("<div class=\"page\">");
+
+        // ── stats strip
+        h.append("<div class=\"overview-strip\">")
+         .append(overviewTile(totalRuns,         "Runs Compared"))
+         .append(overviewTile(uniqueTests,        "Unique Tests"))
+         .append(overviewTile((int) totalPassed,  "Total Passed",  "#4CAF50"))
+         .append(overviewTile((int) totalFailed,  "Total Failed",  totalFailed > 0 ? "#f44336" : "#4CAF50"))
+         .append(overviewTileRate(passRate,        "Overall Pass Rate"))
+         .append("</div>");
+
+        // ── donut for overall
+        h.append("<div style=\"display:grid;grid-template-columns:1fr 2fr;gap:16px;margin-bottom:24px\">");
+        h.append(donutChart((int) totalPassed, (int) totalFailed, (int)(executions - totalPassed - totalFailed), (int) executions));
+
+        // ── mini heat map by test failure rate
+        h.append("<div class=\"chart-card\"><div class=\"chart-title\">Test Reliability (sorted by failure rate)</div>");
+        for (Map<String, Object> t : tests) {
+            double fr = toDouble(t.get("passRate"));
+            String color = fr >= 90 ? "#4CAF50" : fr >= 70 ? "#FF9800" : "#f44336";
+            h.append("<div style=\"margin-bottom:6px\">")
+             .append("<div style=\"display:flex;justify-content:space-between;font-size:12px;margin-bottom:2px\">")
+             .append("<span style=\"overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:70%\">").append(escape(str(t.get("testName")))).append("</span>")
+             .append("<span style=\"font-weight:700;color:").append(color).append("\">").append(fr).append("%</span></div>")
+             .append("<div style=\"background:#eee;border-radius:3px;height:7px\">")
+             .append("<div style=\"width:").append(fr).append("%;height:100%;border-radius:3px;background:").append(color).append("\"></div></div>")
+             .append("</div>");
+        }
+        h.append("</div>");
+        h.append("</div>");
+
+        // ── tests table
+        h.append("<h2 class=\"section-heading\">All Tests Across Selected Runs</h2>");
+        h.append("<div class=\"card-table\">");
+        h.append("<table><thead><tr>")
+         .append("<th>Suite</th><th>Test Name</th><th>Runs</th><th>Passed</th><th>Failed</th><th>Pass Rate</th><th>Avg Duration</th>")
+         .append("</tr></thead><tbody>");
+
+        for (Map<String, Object> t : tests) {
+            long   failed   = toLong(  t.get("failed"));
+            double pr       = toDouble(t.get("passRate"));
+            String prColor  = pr >= 90 ? "#4CAF50" : pr >= 70 ? "#FF9800" : "#f44336";
+            String rowStyle = failed > 0 ? " style=\"background:#fff8f8\"" : "";
+
+            h.append("<tr").append(rowStyle).append(">")
+             .append("<td style=\"color:#888;font-size:12px\">").append(escape(str(t.get("suite")))).append("</td>")
+             .append("<td>")
+             .append(failed > 0 ? "<span class=\"badge badge-failed\">FAIL</span> " : "<span style=\"color:#4CAF50;font-size:11px;font-weight:700;margin-right:4px\">&#10003;</span>")
+             .append(escape(str(t.get("testName")))).append("</td>")
+             .append("<td style=\"color:#aaa\">").append(t.get("runs")).append("</td>")
+             .append("<td style=\"color:#4CAF50;font-weight:600\">").append(t.get("passed")).append("</td>")
+             .append("<td style=\"color:").append(failed > 0 ? "#f44336" : "#aaa").append(";font-weight:600\">").append(failed).append("</td>")
+             .append("<td>")
+             .append("<div style=\"display:flex;align-items:center;gap:8px\">")
+             .append("<div style=\"flex:1;background:#eee;border-radius:4px;height:8px;min-width:60px\">")
+             .append("<div style=\"width:").append(pr).append("%;height:100%;border-radius:4px;background:").append(prColor).append("\"></div></div>")
+             .append("<span style=\"font-size:12px;font-weight:700;color:").append(prColor).append("\">").append(pr).append("%</span>")
+             .append("</div></td>")
+             .append("<td class=\"mono\">").append(t.get("avgDurationMs")).append(" ms</td>")
+             .append("</tr>");
+        }
+        h.append("</tbody></table></div>");
+        h.append("</div></body></html>");
+        return h.toString();
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // SHARED HTML HELPERS
+    // ─────────────────────────────────────────────────────────────
+    private String htmlHead(String title) {
+        return """
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width,initial-scale=1">
+              <title>""" + escape(title) + """
+              </title>
+              <style>
+                *{box-sizing:border-box;margin:0;padding:0}
+                body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f0f2f5;color:#222}
+                a{color:inherit;text-decoration:none}
+
+                /* nav */
+                .topbar{display:flex;align-items:center;gap:8px;background:#1a1a2e;color:#fff;padding:0 24px;height:50px;position:sticky;top:0;z-index:100}
+                .topbar-brand{font-size:15px;font-weight:600;color:#fff;white-space:nowrap}
+                .topbar-brand:hover{opacity:.8}
+                .topbar-sep{color:#555;font-size:18px}
+                .topbar-sub{margin-left:auto;font-size:12px;color:#888}
+
+                /* layout */
+                .page{max-width:1100px;margin:0 auto;padding:28px 20px}
+                .section-heading{font-size:16px;font-weight:600;color:#444;margin:28px 0 12px}
+
+                /* overview strip */
+                .overview-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:14px;margin-bottom:24px}
+                .ov-tile{background:#fff;border-radius:10px;padding:18px 16px;text-align:center;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+                .ov-value{font-size:34px;font-weight:700;line-height:1}
+                .ov-label{font-size:11px;color:#888;margin-top:5px;text-transform:uppercase;letter-spacing:.5px}
+
+                /* project cards */
+                .project-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:18px}
+                .proj-card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden;cursor:pointer;transition:box-shadow .15s}
+                .proj-card:hover{box-shadow:0 4px 14px rgba(0,0,0,.14)}
+                .proj-card-top{padding:18px 20px 12px;border-left:4px solid var(--accent,#2196F3)}
+                .proj-card-name{font-size:16px;font-weight:700;color:#1a1a2e}
+                .proj-card-last{font-size:12px;color:#aaa;margin-top:3px}
+                .proj-card-stats{display:flex;gap:20px;padding:10px 20px 16px;border-top:1px solid #f5f5f5;margin-top:8px}
+                .proj-stat{text-align:center}
+                .proj-stat-val{font-size:20px;font-weight:700}
+                .proj-stat-lbl{font-size:10px;color:#aaa;text-transform:uppercase}
+                .sparkline{padding:0 20px 14px}
+
+                /* run table */
+                .card-table{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);overflow:hidden}
+                table{width:100%;border-collapse:collapse}
+                th{background:#f8f9fa;padding:10px 16px;text-align:left;font-size:11px;text-transform:uppercase;color:#888;letter-spacing:.5px;border-bottom:1px solid #eee}
+                td{padding:11px 16px;border-bottom:1px solid #f8f8f8;font-size:13px;vertical-align:middle}
+                tr:last-child td{border-bottom:none}
+                tr:hover td{background:#fafafa}
+
+                /* run report specific */
+                .run-meta{display:flex;flex-wrap:wrap;gap:20px;background:#fff;border-radius:10px;padding:16px 20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.08);align-items:center}
+                .meta-label{font-size:11px;color:#aaa;text-transform:uppercase;letter-spacing:.4px;margin-right:6px}
+                .progress-row{background:#fff;border-radius:10px;padding:14px 20px;margin-bottom:20px;box-shadow:0 1px 4px rgba(0,0,0,.08)}
+                .section-card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);margin-bottom:20px;overflow:hidden}
+                .section-card-title{padding:14px 20px;border-bottom:1px solid #f0f0f0;font-size:14px;font-weight:600;color:#333;display:flex;align-items:center;gap:8px}
+                .count-badge{background:#eee;color:#555;font-size:11px;padding:2px 7px;border-radius:8px}
+
+                /* misc */
+                .tag{display:inline-block;padding:2px 8px;border-radius:4px;font-size:12px;background:#e8f0fe;color:#1565c0;font-weight:500}
+                .tag-env{background:#e8f5e9;color:#2e7d32}
+                .badge{display:inline-block;padding:2px 7px;border-radius:8px;font-size:11px;font-weight:600;margin-right:4px}
+                .badge-failed{background:#ffebee;color:#c62828}
+                .badge-flaky{background:#fff3e0;color:#e65100}
+                .badge-slow{background:#e3f2fd;color:#1565c0}
+                .error-text{font-family:monospace;font-size:11px;color:#c62828;background:#ffebee;padding:2px 6px;border-radius:3px;display:inline-block;max-width:360px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+                .btn-report{display:inline-block;padding:5px 12px;border-radius:5px;background:#1a1a2e;color:#fff;font-size:12px;font-weight:600;white-space:nowrap}
+                .btn-report:hover{background:#2d2d4e}
+                .empty-state{text-align:center;padding:48px;color:#bbb;font-size:14px}
+                .mono{font-family:monospace;font-size:12px}
+
+                /* charts */
+                .chart-card{background:#fff;border-radius:10px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:20px}
+                .chart-title{font-size:13px;font-weight:600;color:#555;margin-bottom:14px}
+                .donut-wrap{display:flex;align-items:center;gap:20px}
+                .donut{width:110px;height:110px;border-radius:50%;flex-shrink:0}
+                .legend{display:flex;flex-direction:column;gap:8px}
+                .legend-item{display:flex;align-items:center;gap:7px;font-size:13px}
+                .legend-dot{width:11px;height:11px;border-radius:50%;flex-shrink:0}
+                .suite-bar-row{margin-bottom:8px}
+                .suite-bar-label{font-size:12px;color:#555;margin-bottom:3px;display:flex;justify-content:space-between}
+                .suite-bar-track{background:#f0f0f0;border-radius:4px;height:10px;overflow:hidden}
+                .suite-bar-pass{height:100%;background:#4CAF50;float:left}
+                .suite-bar-fail{height:100%;background:#f44336;float:left}
+
+                /* expandable test rows */
+                details summary::-webkit-details-marker{display:none}
+                details>summary{border-bottom:1px solid #f0f0f0}
+                details[open]>summary{border-bottom:1px solid #eee}
+                .test-details{margin-top:10px;padding:12px;background:#fafafa;border-radius:6px;border-left:3px solid #ddd}
+                .steps-list{display:flex;flex-direction:column;gap:3px;margin-bottom:8px}
+                .step{font-family:monospace;font-size:12px;padding:3px 8px;border-radius:3px}
+                .step-pass{background:#f1f8f1;color:#2e7d32}
+                .step-fail{background:#ffebee;color:#c62828;font-weight:600}
+                .error-block{font-family:monospace;font-size:11px;color:#c62828;background:#ffebee;padding:6px 10px;border-radius:4px;margin-top:6px;white-space:pre-wrap;word-break:break-word}
+              </style>
+            </head>
+            """;
+    }
+
+    private String overviewTile(int value, String label) {
+        return overviewTile(value, label, "#1a1a2e");
+    }
+
+    private String overviewTile(int value, String label, String color) {
+        return "<div class=\"ov-tile\"><div class=\"ov-value\" style=\"color:" + color + "\">" + value
+                + "</div><div class=\"ov-label\">" + escape(label) + "</div></div>";
+    }
+
+    private String overviewTileRate(double rate, String label) {
+        String color = rate >= 90 ? "#4CAF50" : rate >= 70 ? "#FF9800" : "#f44336";
+        return "<div class=\"ov-tile\"><div class=\"ov-value\" style=\"color:" + color + "\">" + rate
+                + "%</div><div class=\"ov-label\">" + escape(label) + "</div></div>";
+    }
+
+    private String projectCard(ProjectSummaryDto p) {
+        double rate   = p.getAvgPassRate();
+        String accent = rate >= 90 ? "#4CAF50" : rate >= 70 ? "#FF9800" : "#f44336";
+        String last   = p.getLastRunAt() != null ? p.getLastRunAt().format(FMT) : "never";
+        String spark  = sparkline(p.getPassRateTrend(), accent);
+
+        return "<a href=\"/projects/" + escape(p.getProjectName()) + "\">"
+             + "<div class=\"proj-card\" style=\"--accent:" + accent + "\">"
+             + "<div class=\"proj-card-top\">"
+             + "<div class=\"proj-card-name\">" + escape(p.getProjectName()) + "</div>"
+             + "<div class=\"proj-card-last\">Last run: " + escape(last) + "</div>"
+             + "</div>"
+             + "<div class=\"proj-card-stats\">"
+             + projStat(p.getTotalRuns(),   "Runs",   "#555")
+             + projStat(p.getTotalTests(),  "Tests",  "#555")
+             + projStat(p.getTotalFailed(), "Failed", p.getTotalFailed() > 0 ? "#f44336" : "#4CAF50")
+             + projStat(rate + "%",         "Pass Rate", accent)
+             + "</div>"
+             + "<div class=\"sparkline\">" + spark + "</div>"
+             + "</div></a>";
+    }
+
+    private String projStat(Object value, String label, String color) {
+        return "<div class=\"proj-stat\">"
+             + "<div class=\"proj-stat-val\" style=\"color:" + color + "\">" + value + "</div>"
+             + "<div class=\"proj-stat-lbl\">" + label + "</div>"
+             + "</div>";
+    }
+
+    /** SVG sparkline for pass rate trend (last 5 runs). */
+    private String sparkline(List<Double> trend, String color) {
+        if (trend == null || trend.size() < 2) {
+            return "<svg width=\"100%\" height=\"32\"><text x=\"0\" y=\"20\" fill=\"#ccc\" font-size=\"11\">not enough data</text></svg>";
+        }
+        int w = 220, h = 32, n = trend.size();
+        double minY = trend.stream().mapToDouble(Double::doubleValue).min().orElse(0);
+        double maxY = trend.stream().mapToDouble(Double::doubleValue).max().orElse(100);
+        if (maxY == minY) maxY = minY + 1;
+
+        StringBuilder pts = new StringBuilder();
+        for (int i = 0; i < n; i++) {
+            double x = i * (w - 1.0) / (n - 1);
+            double y = h - 4 - ((trend.get(i) - minY) / (maxY - minY)) * (h - 8);
+            if (i > 0) pts.append(" ");
+            pts.append(String.format("%.1f,%.1f", x, y));
+        }
+        return "<svg width=\"" + w + "\" height=\"" + h + "\" viewBox=\"0 0 " + w + " " + h + "\">"
+             + "<polyline points=\"" + pts + "\" fill=\"none\" stroke=\"" + color + "\" stroke-width=\"2\" stroke-linejoin=\"round\" stroke-linecap=\"round\"/>"
+             + "</svg>";
+    }
+
+    private String tableSection(String title, Integer count, java.util.function.Supplier<String> body) {
+        String countHtml = count != null
+                ? "<span class=\"count-badge\">" + count + "</span>"
+                : "";
+        return "<div class=\"section-card\">"
+             + "<div class=\"section-card-title\">" + escape(title) + countHtml + "</div>"
+             + body.get()
+             + "</div>";
+    }
+
+    private String donutChart(int passed, int failed, int skipped, int total) {
+        if (total == 0) return "<div class=\"chart-card\"><div class=\"chart-title\">Results</div><div class=\"empty-state\" style=\"padding:20px\">No data</div></div>";
+        double pPct = (double) passed / total * 100;
+        double fPct = (double) failed / total * 100;
+        String gradient = String.format(
+            "conic-gradient(#4CAF50 0%% %.1f%%, #f44336 %.1f%% %.1f%%, #FF9800 %.1f%% 100%%)",
+            pPct, pPct, pPct + fPct, pPct + fPct);
+        return "<div class=\"chart-card\">"
+             + "<div class=\"chart-title\">Results Distribution</div>"
+             + "<div class=\"donut-wrap\">"
+             + "<div class=\"donut\" style=\"background:" + gradient + "\"></div>"
+             + "<div class=\"legend\">"
+             + legendItem("#4CAF50", "Passed",  passed,  total)
+             + legendItem("#f44336", "Failed",  failed,  total)
+             + legendItem("#FF9800", "Skipped", skipped, total)
+             + "</div></div></div>";
+    }
+
+    private String legendItem(String color, String label, int count, int total) {
+        double pct = total > 0 ? round2((double) count / total * 100) : 0;
+        return "<div class=\"legend-item\">"
+             + "<div class=\"legend-dot\" style=\"background:" + color + "\"></div>"
+             + "<span><strong>" + count + "</strong> " + label + " <span style=\"color:#aaa\">(" + pct + "%)</span></span>"
+             + "</div>";
+    }
+
+    private String suiteBreakdown(List<TestResultDetail> allTests) {
+        if (allTests == null || allTests.isEmpty())
+            return "<div class=\"chart-card\"><div class=\"chart-title\">By Suite</div><div class=\"empty-state\" style=\"padding:20px\">No data</div></div>";
+
+        Map<String, long[]> suites = allTests.stream().collect(Collectors.groupingBy(
+            t -> t.getSuite() != null ? t.getSuite() : "—",
+            Collectors.collectingAndThen(Collectors.toList(), list -> new long[]{
+                list.stream().filter(t -> t.getStatus() == TestStatus.PASSED).count(),
+                list.stream().filter(t -> t.getStatus() == TestStatus.FAILED).count(),
+                list.size()
+            })));
+
+        StringBuilder b = new StringBuilder();
+        b.append("<div class=\"chart-card\" style=\"padding:0;overflow:hidden\">")
+         .append("<details>")
+         .append("<summary style=\"padding:16px 20px;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;user-select:none\">")
+         .append("<span class=\"chart-title\" style=\"margin:0\">By Suite</span>")
+         .append("<span style=\"font-size:12px;color:#aaa\">").append(suites.size()).append(" suites &nbsp;&#9660;</span>")
+         .append("</summary>")
+         .append("<div style=\"padding:0 20px 16px\">");
+        suites.forEach((suite, counts) -> {
+            long pass = counts[0], fail = counts[1], tot = counts[2];
+            double passPct = tot > 0 ? round2((double) pass / tot * 100) : 0;
+            double failPct = tot > 0 ? round2((double) fail / tot * 100) : 0;
+            b.append("<div class=\"suite-bar-row\">")
+             .append("<div class=\"suite-bar-label\"><span>").append(escape(suite)).append("</span>")
+             .append("<span style=\"color:#aaa;font-size:11px\">").append(pass).append("/").append(tot).append("</span></div>")
+             .append("<div class=\"suite-bar-track\">")
+             .append("<div class=\"suite-bar-pass\" style=\"width:").append(passPct).append("%\"></div>")
+             .append("<div class=\"suite-bar-fail\" style=\"width:").append(failPct).append("%\"></div>")
+             .append("</div></div>");
+        });
+        b.append("</div></details></div>");
+        return b.toString();
     }
 
     private String escape(String text) {
         if (text == null) return "";
         return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
     }
+
+    private String str(Object o) { return o == null ? "" : o.toString(); }
+    private long   toLong(Object o)   { return o == null ? 0 : ((Number) o).longValue(); }
+    private double toDouble(Object o) { return o == null ? 0 : ((Number) o).doubleValue(); }
+    private double round2(double v)   { return Math.round(v * 100.0) / 100.0; }
 }

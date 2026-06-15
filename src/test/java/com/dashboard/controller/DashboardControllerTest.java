@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -196,7 +197,7 @@ class DashboardControllerTest {
     void getDashboard_shouldReturnEmptyDashboard_whenNoRunsExist() throws Exception {
         // Given
         DashboardResponse dashboard = buildEmptyDashboard();
-        when(testRunService.getDashboard(any(), any(), any()))
+        when(testRunService.getDashboard(any(), any(), anyInt()))
                 .thenReturn(dashboard);
 
         // When / Then
@@ -212,7 +213,7 @@ class DashboardControllerTest {
     void getDashboard_shouldReturnTrendData_whenRunsExist() throws Exception {
         // Given
         DashboardResponse dashboard = buildDashboardWithTrends();
-        when(testRunService.getDashboard(any(), any(), any()))
+        when(testRunService.getDashboard(any(), any(), anyInt()))
                 .thenReturn(dashboard);
 
         // When / Then
@@ -234,7 +235,7 @@ class DashboardControllerTest {
         // Given
         String branch = "feature/JIRA-123_test-branch";
         DashboardResponse dashboard = buildDashboard(branch, "test", 5);
-        when(testRunService.getDashboard(eq(branch), any(), any()))
+        when(testRunService.getDashboard(eq(branch), any(), anyInt()))
                 .thenReturn(dashboard);
 
         // When / Then
@@ -251,7 +252,7 @@ class DashboardControllerTest {
         // Given
         String environment = "qa environment";
         DashboardResponse dashboard = buildDashboard("main", environment, 5);
-        when(testRunService.getDashboard(any(), eq(environment), any()))
+        when(testRunService.getDashboard(any(), eq(environment), anyInt()))
                 .thenReturn(dashboard);
 
         // When / Then

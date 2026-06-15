@@ -13,6 +13,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -163,7 +164,7 @@ class TestControllerTest {
     @Test
     void getSlowestTests_shouldReturnEmptyArray_whenNoTestsExist() throws Exception {
         // Given
-        when(testRunService.getSlowestTests(any())).thenReturn(new ArrayList<>());
+        when(testRunService.getSlowestTests(anyInt())).thenReturn(new ArrayList<>());
 
         // When / Then
         mockMvc.perform(get("/tests/slowest"))
@@ -270,7 +271,7 @@ class TestControllerTest {
         List<SlowestTestDto> slowestTests = List.of(
                 new SlowestTestDto("test-id-slow", "Complete Test Name", "Integration Suite", 15000L)
         );
-        when(testRunService.getSlowestTests(any())).thenReturn(slowestTests);
+        when(testRunService.getSlowestTests(anyInt())).thenReturn(slowestTests);
 
         // When / Then
         mockMvc.perform(get("/tests/slowest"))

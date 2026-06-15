@@ -23,6 +23,15 @@ public class TestRun {
     @Column(unique = true, nullable = false)
     private String runId;
 
+    @Column
+    private String projectName;
+
+    @Column
+    private String targetUrl;
+
+    @Column
+    private String username;
+
     @Column(nullable = false)
     private String branch;
 

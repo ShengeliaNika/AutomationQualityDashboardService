@@ -11,6 +11,9 @@ import java.util.Map;
 @Builder
 public class RunSummaryResponse {
     private String runId;
+    private String projectName;
+    private String targetUrl;
+    private String username;
     private String branch;
     private String environment;
     private LocalDateTime startedAt;
@@ -25,4 +28,5 @@ public class RunSummaryResponse {
     private List<SlowestTestDto> slowestTests;
     private List<FailedTestDetail> failedTests;
     private Map<String, List<String>> failedBySuite;
+    private List<TestResultDetail> allTests;
 }

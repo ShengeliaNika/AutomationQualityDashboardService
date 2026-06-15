@@ -34,6 +34,9 @@ public class TestResult {
     @Column(length = 2000)
     private String errorMessage;
 
+    @Column(columnDefinition = "TEXT")
+    private String errorDetails;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "test_run_id", nullable = false)
     private TestRun testRun;

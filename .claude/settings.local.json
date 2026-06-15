@@ -1,7 +1,18 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git config:*)"
+      "Bash(git config:*)",
+      "Bash(mvn test *)",
+      "Bash(mvn --version)",
+      "Read(//usr/lib/jvm/**)",
+      "Bash(update-java-alternatives -l)",
+      "Bash(update-alternatives --list java)",
+      "Bash(sudo apt install openjdk-21-jdk -y)",
+      "Bash(kill 3800586)",
+      "Bash(PGPASSWORD=dashboard psql -U dashboard -h localhost -d dashboarddb -c \"TRUNCATE test_result, test_run RESTART IDENTITY CASCADE;\")",
+      "Bash(PGPASSWORD=dashboard psql -U dashboard -h localhost -d dashboarddb -c \"\\\\dt\")",
+      "Bash(grep -r \"Username\\\\|Password\\\\|ValidLogin\" /home/user/Desktop/Folders/nugioscore-api/Config/AppConfig.cs | head -10)",
+      "Read(//home/user/Desktop/Folders/nugioscore-api/Config/**)"
     ]
   }
 }
