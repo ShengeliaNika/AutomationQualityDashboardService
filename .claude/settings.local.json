@@ -12,7 +12,9 @@
       "Bash(PGPASSWORD=dashboard psql -U dashboard -h localhost -d dashboarddb -c \"TRUNCATE test_result, test_run RESTART IDENTITY CASCADE;\")",
       "Bash(PGPASSWORD=dashboard psql -U dashboard -h localhost -d dashboarddb -c \"\\\\dt\")",
       "Bash(grep -r \"Username\\\\|Password\\\\|ValidLogin\" /home/user/Desktop/Folders/nugioscore-api/Config/AppConfig.cs | head -10)",
-      "Read(//home/user/Desktop/Folders/nugioscore-api/Config/**)"
+      "Read(//home/user/Desktop/Folders/nugioscore-api/Config/**)",
+      "Bash(dotnet build *)",
+      "Bash(mvn compile *)"
     ]
   }
 }

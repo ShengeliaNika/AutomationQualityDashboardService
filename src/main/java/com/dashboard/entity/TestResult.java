@@ -37,6 +37,21 @@ public class TestResult {
     @Column(columnDefinition = "TEXT")
     private String errorDetails;
 
+    @Column(length = 2000)
+    private String requestUrl;
+
+    @Column(length = 10)
+    private String requestMethod;
+
+    @Column(columnDefinition = "TEXT")
+    private String requestBody;
+
+    @Column
+    private Integer responseStatus;
+
+    @Column(columnDefinition = "TEXT")
+    private String responseBody;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "test_run_id", nullable = false)
     private TestRun testRun;

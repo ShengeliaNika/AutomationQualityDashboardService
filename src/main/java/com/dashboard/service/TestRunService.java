@@ -28,6 +28,7 @@ public class TestRunService {
     private final TestRunRepository testRunRepository;
     private final TestResultRepository testResultRepository;
     private final NotificationService notificationService;
+    private final ClickUpService clickUpService;
 
     @Transactional
     public TestRun saveRun(TestRunRequest request) {
@@ -56,6 +57,11 @@ public class TestRunService {
                         .durationMs(t.getDurationMs())
                         .errorMessage(t.getErrorMessage())
                         .errorDetails(t.getErrorDetails())
+                        .requestUrl(t.getRequestUrl())
+                        .requestMethod(t.getRequestMethod())
+                        .requestBody(truncate(t.getRequestBody(), 5000))
+                        .responseStatus(t.getResponseStatus())
+                        .responseBody(truncate(t.getResponseBody(), 5000))
                         .testRun(run)
                         .build())
                 .collect(Collectors.toList());
@@ -66,6 +72,11 @@ public class TestRunService {
         if (request.getCallbackUrl() != null && !request.getCallbackUrl().isBlank()) {
             notificationService.notifyRunCompleted(saved, request.getCallbackUrl());
         }
+
+        List<TestResult> failedTests = saved.getTests().stream()
+                .filter(t -> t.getStatus() == TestStatus.FAILED)
+                .collect(Collectors.toList());
+        clickUpService.reportFailedRun(saved, failedTests);
 
         return saved;
     }
@@ -349,6 +360,11 @@ public class TestRunService {
                         .durationMs(t.getDurationMs() != null ? t.getDurationMs() : 0)
                         .errorMessage(t.getErrorMessage())
                         .errorDetails(t.getErrorDetails())
+                        .requestUrl(t.getRequestUrl())
+                        .requestMethod(t.getRequestMethod())
+                        .requestBody(t.getRequestBody())
+                        .responseStatus(t.getResponseStatus())
+                        .responseBody(t.getResponseBody())
                         .build())
                 .collect(Collectors.toList());
 
@@ -379,5 +395,10 @@ public class TestRunService {
 
     private double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    private String truncate(String s, int max) {
+        if (s == null) return null;
+        return s.length() <= max ? s : s.substring(0, max) + "\n... (truncated)";
     }
 }

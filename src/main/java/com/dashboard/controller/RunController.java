@@ -48,8 +48,22 @@ public class RunController {
     public ResponseEntity<String> getRunReport(@PathVariable String runId) {
         RunSummaryResponse summary = testRunService.getRunSummary(runId);
         List<FlakyTestDto> flaky = testRunService.getFlakyTests();
-        String html = htmlReportService.generateReport(summary, flaky);
+        String html = htmlReportService.generateReport(summary, flaky, false);
         return ResponseEntity.ok().contentType(MediaType.TEXT_HTML).body(html);
+    }
+
+    @GetMapping(value = "/runs/{runId}/download", produces = MediaType.TEXT_HTML_VALUE)
+    public ResponseEntity<String> downloadRunReport(@PathVariable String runId) {
+        RunSummaryResponse summary = testRunService.getRunSummary(runId);
+        List<FlakyTestDto> flaky = testRunService.getFlakyTests();
+        String html = htmlReportService.generateReport(summary, flaky, true);
+        String project  = summary.getProjectName() != null ? summary.getProjectName() : "report";
+        String date     = summary.getStartedAt()   != null ? summary.getStartedAt().format(java.time.format.DateTimeFormatter.ofPattern("yyyy-MM-dd_HH-mm")) : "unknown";
+        String filename = project + "-" + date + ".html";
+        return ResponseEntity.ok()
+                .contentType(MediaType.TEXT_HTML)
+                .header("Content-Disposition", "attachment; filename=\"" + filename + "\"")
+                .body(html);
     }
 
     @DeleteMapping("/runs/{runId}")

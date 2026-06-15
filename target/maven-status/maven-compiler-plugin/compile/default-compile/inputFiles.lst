@@ -13,6 +13,7 @@
 /home/user/AutomationQualityDashboardService/src/main/java/com/dashboard/entity/TestResult.java
 /home/user/AutomationQualityDashboardService/src/main/java/com/dashboard/exception/GlobalExceptionHandler.java
 /home/user/AutomationQualityDashboardService/src/main/java/com/dashboard/dto/request/TestResultRequest.java
+/home/user/AutomationQualityDashboardService/src/main/java/com/dashboard/service/ClickUpService.java
 /home/user/AutomationQualityDashboardService/src/main/java/com/dashboard/service/NotificationService.java
 /home/user/AutomationQualityDashboardService/src/main/java/com/dashboard/controller/TestController.java
 /home/user/AutomationQualityDashboardService/src/main/java/com/dashboard/dto/response/SlowestTestDto.java

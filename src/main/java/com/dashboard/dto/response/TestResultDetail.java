@@ -14,4 +14,9 @@ public class TestResultDetail {
     private long durationMs;
     private String errorMessage;
     private String errorDetails;
+    private String requestUrl;
+    private String requestMethod;
+    private String requestBody;
+    private Integer responseStatus;
+    private String responseBody;
 }
